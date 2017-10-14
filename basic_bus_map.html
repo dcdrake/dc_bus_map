@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+  <title>Bus Test</title>
+  <meta http-equiv="refresh" content="45">
+
+  <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js"></script>
+  <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.css" />
+
+  <script src="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.js"></script>
+
+  <style>
+  #map {
+    width: 1260px;
+    height: 600px;
+  }
+  </style>
+
+</head>
+
+<body>
+
+  <div id="map"></div>
+
+  <script type="text/javascript">
+  var bus_icon = L.icon({
+    iconUrl: 'metro_bus.jpg',
+
+    iconSize:     [30, 30], // size of the icon
+    popupAnchor:  [0, -10] // point from which the popup should open relative to the iconAnchor
+});
+
+
+  // Draw the basic map that we can add layers to
+  var map = L.map('map',{scrollWheelZoom:true}).setView([38.887546, -77.090105], 14);
+
+  L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+
+  // Get all the bus positions, and add them as markers on the map
+  $(function() {
+    var params = {
+      "api_key": "",
+    };
+
+    $.ajax({
+      url: "https://api.wmata.com/Bus.svc/json/jBusPositions?" + $.param(params),
+      type: "GET",
+    })
+    .done(function(data) {
+
+      var bus_position_data = data["BusPositions"]
+      for (var i in bus_position_data)
+      {
+        var bus_id  = bus_position_data[i].VehicleID;
+        var bus_route = bus_position_data[i].RouteID;
+        var direction = bus_position_data[i].DirectionText;
+        var bus_lat = bus_position_data[i].Lat;
+        var bus_lon = bus_position_data[i].Lon;
+        // Bind an onClick() function to each marker, so that the route for that bus will be shown when it's clicked
+        var marker = L.marker([bus_lat, bus_lon], {icon: bus_icon}).bindPopup(bus_id + ", " + bus_route).addTo(map).on('click', L.bind(onClick, null, bus_route, direction));
+      }
+    })
+    .fail(function() {
+      alert("error");
+    });
+  });
+
+  // Handle fetching the route when a bus marker is clicked
+  function onClick(route, direction) {
+    clearMap();
+    // alert(direction);
+
+    $(function() {
+      var params = {
+        "api_key": "",
+        // Request parameters
+        "RouteID": route,
+      };
+
+      $.ajax({
+        url: "https://api.wmata.com/Bus.svc/json/jRouteDetails?" + $.param(params),
+        type: "GET",
+      })
+      .done(function(data) {
+        // Buses don't run on the same streets if in both directions of a route.
+        // Figure out which direction this bus is going and draw the right route.
+        var route0_dir = data["Direction0"]["DirectionText"];
+        var route1_dir = data["Direction1"]["DirectionText"];
+
+        var route_data = ''
+        if (route0_dir == direction)
+        {
+          route_data = data["Direction0"]["Shape"];
+        }
+        else if (route1_dir == direction)
+        {
+          route_data = data["Direction1"]["Shape"];
+        }
+
+        var coord_array = {"coords": []};
+
+        for (var i in route_data)
+        {
+          var lat = route_data[i].Lat;
+          var lon = route_data[i].Lon;
+          coord_array['coords'].push([lat, lon]);
+        }
+
+        var polyline = L.polyline(coord_array['coords'], {
+          color: 'red',
+          weight: 5,
+          opacity: .9,
+          lineJoin: 'round'
+        }).addTo(map);
+      })
+      .fail(function() {
+        alert("error");
+      });
+    });
+  }
+
+  // Clear the map each time a bus is selected so that the new route can be drawn
+  function clearMap() {
+      for(i in map._layers) {
+          if(map._layers[i]._path != undefined) {
+              try {
+                  map.removeLayer(map._layers[i]);
+              }
+              catch(e) {
+                  console.log("problem with " + e + map._layers[i]);
+              }
+          }
+      }
+  }
+  </script>
+</body>
+</html>
